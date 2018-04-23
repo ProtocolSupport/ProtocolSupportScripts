@@ -1,21 +1,45 @@
 <?php
 //=====================================================\\
+//                        PSPE                         \\
+//=====================================================\\
+
+/* 
+ * By the ProtocolSupport team,
+ * Falls under GNU Affero General Public License v3.0
+ * /
+
+//=====================================================\\
 //         PE -> PC ids to create PE remaps            \\
 //=====================================================\\
-$simpleIdRemaps = array();
-$complexIdRemaps = array();
-function simpleRemap($pc, $pe) {
-  global $simpleIdRemaps;
-  $simpleIdRemaps[$pe] = $pc;
-}
-function semiComplexRemap($pc, $pe, $peData) {
-  global $complexIdRemaps;
-  $complexIdRemaps[(($pe << 4) | $peData)] = (($pc << 4));
-}
-function complexRemap($pc, $pcData, $pe, $peData) {
-  global $complexIdRemaps;
-  $complexIdRemaps[(($pe << 4) | $peData)] = (($pc << 4) | $pcData);
-}
+
+/* 
+ * This 'simple' script compiles a JSON remap table from 
+ * old pc-ids & current PE lookup table.
+ * Format presented is {"Remaps":[{"from":0,"to":0}]}
+ * Where "from" = (PCid << 4) | PCdata
+ *  and  "to" = PEruntimeID.
+ */
+
+//=====================================================\\
+//                       Options                       \\
+//=====================================================\\
+
+$fromFile = "PEblocks.json";
+$toFile = "blockremaps.json";
+
+//=====================================================\\
+//                      Pre-Remaps                     \\
+//=====================================================\\
+
+//Here you add the remaps that are performed before the
+// json-runtime ID remapping.
+//These remaps are essentially PC -> old PE ids
+// and can be added like they once were inside PSPE.
+
+//simpleRemap -> remaps only PC id to PE id and data stays untouched.
+//semiComplexRemap -> remaps PC id to PE id and data.
+//complexRemap -> remaps PC id and data to PE id and data.
+
 // ===[ BLOCKS ]===
 // Concrete Powder
 simpleRemap(252, 237);
@@ -62,18 +86,18 @@ simpleRemap(205, 203);  // Purpur slab
 simpleRemap(204, 201);  // Purpur double slab TODO: replace to real double slab
 semiComplexRemap(202, 201, 2);  // Purpur pillar
 // Nether slab -> Quartz slab
-simpleRemap(44, 7, 44, 6);
-simpleRemap(44, 14, 44, 15);
-simpleRemap(43, 7, 43, 6);
+complexRemap(44, 7, 44, 6);
+complexRemap(44, 14, 44, 15);
+complexRemap(43, 7, 43, 6);
 // And vice-versa
-simpleRemap(44, 6, 44, 7);
-simpleRemap(44, 15, 44, 14);
-simpleRemap(43, 6, 43, 7);
+complexRemap(44, 6, 44, 7);
+complexRemap(44, 15, 44, 14);
+complexRemap(43, 6, 43, 7);
 // Prismarine data ID mismatch
-simpleRemap(168, 1, 168, 2);
-simpleRemap(168, 2, 168, 1);
+complexRemap(168, 1, 168, 2);
+complexRemap(168, 2, 168, 1);
 // Podzol
-simpleRemap(3, 2, 243, 0);
+complexRemap(3, 2, 243, 0);
 // Colored Fences
 semiComplexRemap(188, 85, 1);
 semiComplexRemap(189, 85, 2);
@@ -137,6 +161,29 @@ complexRemap(167, 12, 167, 15);
 complexRemap(167, 13, 167, 14);
 complexRemap(167, 14, 167, 13);
 complexRemap(167, 15, 167, 12);
+
+//=====================================================\\
+//                    Initialisation                   \\
+//=====================================================\\
+
+$simpleIdRemaps = array();
+$complexIdRemaps = array();
+
+function simpleRemap($pc, $pe) {
+  global $simpleIdRemaps;
+  $simpleIdRemaps[$pe] = $pc;
+}
+
+function semiComplexRemap($pc, $pe, $peData) {
+  global $complexIdRemaps;
+  $complexIdRemaps[(($pe << 4) | $peData)] = (($pc << 4));
+}
+
+function complexRemap($pc, $pcData, $pe, $peData) {
+  global $complexIdRemaps;
+  $complexIdRemaps[(($pe << 4) | $peData)] = (($pc << 4) | $pcData);
+}
+
 function getState($id, $data) {
   global $simpleIdRemaps, $complexIdRemaps;
   if (array_key_exists($id, $simpleIdRemaps)) {
@@ -148,11 +195,13 @@ function getState($id, $data) {
   }
   return $blockstate;
 }
+
 //=====================================================\\
-//                Create Remapping Table               \\
+//                   JSON remapping                    \\
 //=====================================================\\
+
 $remaps = array();
-$PEblocks = json_decode(file_get_contents("PEblocks.json"), true);
+$PEblocks = json_decode(file_get_contents($fromFile), true);
 foreach($PEblocks as $PEblock) {
   if (getState($PEblock["id"], $PEblock["data"]) === null) { echo $PEblock["id"] . "<br>"; }
   $remap = array(
@@ -161,5 +210,6 @@ foreach($PEblocks as $PEblock) {
   );
   $remaps[] = $remap;
 }
-file_put_contents("PEremaps.json", json_encode($remaps));
+$table = array("Remaps" => $remaps);
+file_put_contents($toFile, json_encode($table));
 ?>
