@@ -28,6 +28,44 @@ $fromFile = "PEblocks.json";
 $toFile = "blockremaps.json";
 
 //=====================================================\\
+//                    Initialisation                   \\
+//=====================================================\\
+
+$simpleIdRemaps = array();
+$complexIdRemaps = array();
+
+function simpleRemap($pc, $pe) {
+  global $simpleIdRemaps;
+  $simpleIdRemaps[$pe] = $pc;
+}
+
+function semiComplexRemap($pc, $pe, $peData) {
+  global $complexIdRemaps;
+  $complexIdRemaps[(($pe << 4) | $peData)] = (($pc << 4));
+}
+
+function complexRemap($pc, $pcData, $pe, $peData) {
+  global $complexIdRemaps;
+  $complexIdRemaps[(($pe << 4) | $peData)] = (($pc << 4) | $pcData);
+}
+
+function getState($id, $data) {
+  global $simpleIdRemaps, $complexIdRemaps;
+  $count++;
+  if (array_key_exists($id, $simpleIdRemaps)) {
+    $srcount++;
+    return (($simpleIdRemaps[$id] << 4) | $data);
+  }
+  $blockstate = (($id << 4) | $data);
+  if (array_key_exists($blockstate, $complexIdRemaps)) {
+    $crcount++;
+    return $complexIdRemaps[$blockstate];
+  }
+  $gcount++;
+  return $blockstate;
+}
+
+//=====================================================\\
 //                      Pre-Remaps                     \\
 //=====================================================\\
 
@@ -165,47 +203,12 @@ complexRemap(167, 15, 167, 12);
 complexRemap(84, 1, 84, 0);
 
 //=====================================================\\
-//                    Initialisation                   \\
-//=====================================================\\
-
-$simpleIdRemaps = array();
-$complexIdRemaps = array();
-
-function simpleRemap($pc, $pe) {
-  global $simpleIdRemaps;
-  $simpleIdRemaps[$pe] = $pc;
-}
-
-function semiComplexRemap($pc, $pe, $peData) {
-  global $complexIdRemaps;
-  $complexIdRemaps[(($pe << 4) | $peData)] = (($pc << 4));
-}
-
-function complexRemap($pc, $pcData, $pe, $peData) {
-  global $complexIdRemaps;
-  $complexIdRemaps[(($pe << 4) | $peData)] = (($pc << 4) | $pcData);
-}
-
-function getState($id, $data) {
-  global $simpleIdRemaps, $complexIdRemaps;
-  if (array_key_exists($id, $simpleIdRemaps)) {
-    return (($simpleIdRemaps[$id] << 4) | $data);
-  }
-  $blockstate = (($id << 4) | $data);
-  if (array_key_exists($blockstate, $complexIdRemaps)) {
-    return $complexIdRemaps[$blockstate];
-  }
-  return $blockstate;
-}
-
-//=====================================================\\
 //                   JSON remapping                    \\
 //=====================================================\\
 
 $remaps = array();
 $PEblocks = json_decode(file_get_contents($fromFile), true);
 foreach($PEblocks as $PEblock) {
-  if (getState($PEblock["id"], $PEblock["data"]) === null) { echo $PEblock["id"] . "<br>"; }
   $remap = array(
     "from" => getState($PEblock["id"], $PEblock["data"]),
     "to" => $PEblock["runtimeID"]
