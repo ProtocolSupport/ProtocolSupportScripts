@@ -161,6 +161,8 @@ complexRemap(167, 12, 167, 15);
 complexRemap(167, 13, 167, 14);
 complexRemap(167, 14, 167, 13);
 complexRemap(167, 15, 167, 12);
+// Jukebox
+complexRemap(84, 1, 84, 0);
 
 //=====================================================\\
 //                    Initialisation                   \\
