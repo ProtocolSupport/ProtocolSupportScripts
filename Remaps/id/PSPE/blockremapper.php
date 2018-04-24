@@ -36,33 +36,47 @@ $complexIdRemaps = array();
 
 function simpleRemap($pc, $pe) {
   global $simpleIdRemaps;
-  $simpleIdRemaps[$pe] = $pc;
+  if (array_key_exists($pe, $simpleIdRemaps)) {
+    $simpleIdRemaps[$pe][] = $pc;
+  } else {
+    $simpleIdRemaps[$pe] = array($pc);
+  }
 }
 
 function semiComplexRemap($pc, $pe, $peData) {
   global $complexIdRemaps;
-  $complexIdRemaps[(($pe << 4) | $peData)] = (($pc << 4));
+  $peBlockState = (($pe << 4) | $peData);
+  if (array_key_exists($peBlockState, $complexIdRemaps)) {
+    $complexIdRemaps[$peBlockState][] = ($pc << 4);
+  } else {
+    $complexIdRemaps[$peBlockState] = array(($pc << 4));
+  }
 }
 
 function complexRemap($pc, $pcData, $pe, $peData) {
   global $complexIdRemaps;
-  $complexIdRemaps[(($pe << 4) | $peData)] = (($pc << 4) | $pcData);
+  $peBlockState = (($pe << 4) | $peData);
+  if (array_key_exists($peBlockState, $complexIdRemaps)) {
+    $complexIdRemaps[$peBlockState][] = (($pc << 4) | $pcData);
+  } else {
+    $complexIdRemaps[$peBlockState] = array((($pc << 4) | $pcData));
+  }
 }
 
 function getState($id, $data) {
   global $simpleIdRemaps, $complexIdRemaps;
-  $count++;
   if (array_key_exists($id, $simpleIdRemaps)) {
-    $srcount++;
-    return (($simpleIdRemaps[$id] << 4) | $data);
+	$simplePreRemaps = array();
+	foreach ($simpleIdRemaps[$id] as $simplePreRemap) {
+	  $simplePreRemaps[] = (($simplePreRemap << 4) | $data);
+	}
+    return $simplePreRemaps;
   }
   $blockstate = (($id << 4) | $data);
   if (array_key_exists($blockstate, $complexIdRemaps)) {
-    $crcount++;
     return $complexIdRemaps[$blockstate];
   }
-  $gcount++;
-  return $blockstate;
+  return array($blockstate);
 }
 
 //=====================================================\\
@@ -201,20 +215,27 @@ complexRemap(167, 14, 167, 13);
 complexRemap(167, 15, 167, 12);
 // Jukebox
 complexRemap(84, 1, 84, 0);
+complexRemap(84, 0, 84, 0);
 
 //=====================================================\\
 //                   JSON remapping                    \\
 //=====================================================\\
-
+$count = 0;
 $remaps = array();
 $PEblocks = json_decode(file_get_contents($fromFile), true);
+//Find all PC remaps for PE blocks.
 foreach($PEblocks as $PEblock) {
-  $remap = array(
-    "from" => getState($PEblock["id"], $PEblock["data"]),
-    "to" => $PEblock["runtimeID"]
-  );
-  $remaps[] = $remap;
+  $preRemaps = getState($PEblock["id"], $PEblock["data"]);
+  foreach($preRemaps as $preRemap) {
+    $remap = array(
+      "from" => $preRemap,
+      "to" => $PEblock["runtimeID"]
+    );
+    $remaps[] = $remap;
+	$count++;
+  }
 }
 $table = array("Remaps" => $remaps);
 file_put_contents($toFile, json_encode($table));
+echo $count;
 ?>
