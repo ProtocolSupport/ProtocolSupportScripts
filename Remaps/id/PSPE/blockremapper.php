@@ -237,5 +237,5 @@ foreach($PEblocks as $PEblock) {
 }
 $table = array("Remaps" => $remaps);
 file_put_contents($toFile, json_encode($table));
-echo $count;
+echo "Created table for " . $count . " PC blockstate -> PE runtimeIDs";
 ?>
