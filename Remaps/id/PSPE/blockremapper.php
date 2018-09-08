@@ -9,234 +9,371 @@
  * /
 
 //=====================================================\\
-//         PE -> PC ids to create PE remaps            \\
+//         PC -> PE ids to create PE remaps            \\
 //=====================================================\\
 
 /* 
- * This 'simple' script compiles a JSON remap table from 
- * old pc-ids & current PE lookup table.
- * Format presented is {"Remaps":[{"from":0,"to":0}]}
- * Where "from" = (PCid << 4) | PCdata
- *  and  "to" = PEruntimeID.
+ * - Info -
+ * This is the new tool to generate json for the blockremaps.
+ * We have this as compiler as it is easy to work and test with.
+ * 
+ * - Background -
+ * Both PC and PE have runtimeids.
+ * Runtimeids are variable, we need to rely on blocknames for
+ * remap definitions. (Inside PS id->id lists are compiled)
+ * In PC a definition is now a BLOCKSTATE which can contain certian properties.
+ * In PC no more magic data value is used.
+ * In PE a definition is now a BLOCKSTATE without properties.
+ * In PE the magic data value is still used.
+ *
+ * - Workings -
+ * We iteratre through the pc block definition
+ * and remap to PE string, id and data.
+ * 
+ * - Remapping -
+ * All PC states are unique, that's why they are the keys.
+ * We first check the state for manual remaps defined in this script.
+ * If no manual remap is found a matching PE state is searched,
+ * first based on (legacy) ID then based on name.
  */
 
 //=====================================================\\
 //                       Options                       \\
 //=====================================================\\
 
-$fromFile = "PEblocks.json";
-$toFile = "blockremaps.json";
+$pcDefinitionUrl = "https://raw.githubusercontent.com/ProtocolSupport/ProtocolSupport/master/resources/resources/mappings/flattening/minecraft_1_13/blocks.json";
+$peDefinitionUrl = "https://raw.githubusercontent.com/pmmp/PocketMine-MP/master/src/pocketmine/resources/runtimeid_table.json";
+$pcOldIds = "https://raw.githubusercontent.com/ProtocolSupport/ProtocolSupport/master/resources/resources/mappings/preflatteningblockiddata.json";
 
 //=====================================================\\
 //                    Initialisation                   \\
 //=====================================================\\
 
-$simpleIdRemaps = array();
-$complexIdRemaps = array();
-
-function simpleRemap($pc, $pe) {
-  global $simpleIdRemaps;
-  if (array_key_exists($pe, $simpleIdRemaps)) {
-    $simpleIdRemaps[$pe][] = $pc;
-  } else {
-    $simpleIdRemaps[$pe] = array($pc);
+/**
+* Encodes blockstate properties to mojang format.
+*/
+function propertiesEncode($properties) {
+  $propertyStrings = array();
+  foreach($properties as $property => $value) {
+    $propertyStrings[] = $property . "=" . $value;
   }
+  return "[" . implode(",", $propertyStrings) . "]";
 }
 
-function semiComplexRemap($pc, $pe, $peData) {
-  global $complexIdRemaps;
-  $peBlockState = (($pe << 4) | $peData);
-  if (array_key_exists($peBlockState, $complexIdRemaps)) {
-    $complexIdRemaps[$peBlockState][] = ($pc << 4);
-  } else {
-    $complexIdRemaps[$peBlockState] = array(($pc << 4));
-  }
+//Definition arrays.
+$pcDef = json_decode(file_get_contents($pcDefinitionUrl), true);
+$peDef = json_decode(file_get_contents($peDefinitionUrl), true);
+$pcIdDef = json_decode(file_get_contents($pcOldIds), true);
+
+//Create pc lookup table by (FULL) blockstate.
+$pcFromState = array();
+foreach($pcIdDef as $val) {
+  $pcFromState[$val["blockdata"]] = array();
+  $pcFromState[$val["blockdata"]]["id"] = $val["legacyid"];
+  $pcFromState[$val["blockdata"]]["data"] = $val["legacydata"];
 }
 
-function complexRemap($pc, $pcData, $pe, $peData) {
-  global $complexIdRemaps;
-  $peBlockState = (($pe << 4) | $peData);
-  if (array_key_exists($peBlockState, $complexIdRemaps)) {
-    $complexIdRemaps[$peBlockState][] = (($pc << 4) | $pcData);
-  } else {
-    $complexIdRemaps[$peBlockState] = array((($pc << 4) | $pcData));
+//Create pe lookup table by (NON FULL) blockstate.
+$peFromState = array();
+foreach($peDef as $val) {
+  $peFromState[$val["name"]] = $val["id"];
+}
+
+//Create pe lookup table by id.
+$peFromId = array();
+foreach($peDef as $val) {
+  $peFromId[$val["id"]] = $val["name"];
+}
+
+//Remapping tables:
+$fullRemaps = array();
+$catchAllRemaps = array();
+$dataRemaps = array();
+
+/**
+ * Defines full remap for certain pc (FULL) blockstate.
+ * A full blockstate contains all state properties.
+ */
+function defFullRemap($state, $peState, $peData) {
+  global $fullRemaps;
+  $fullRemaps[$state] = array("name"=>$peState, "data"=>$peData);
+}
+
+/**
+ * Defines a catch-all full remap for certain pc (NON FULL) blockstate.
+ * A non-full blockstate contains no certain state properties.
+ */
+function defCatchAllRemap($state, $peState, $peData) {
+  global $catchAllRemaps;
+  $catchAllRemaps[$state] = array("name"=>$peState, "data"=>$peData);
+}
+
+/**
+ * Defines data remap for certain pc (NON FULL) blockstate.
+ * A non full blockstate does not contain state properties.
+ */
+function defDataRemap($state, $legacyData, $peData) {
+  global $dataRemaps;
+  $remaps = $dataRemaps[$state];
+  if ($remaps == null) {
+    $remaps = array();
   }
+  $remaps[$legacyData] = $peData;
+  $dataRemaps[$state] = $remaps;
+}
+
+function dataRemap($state, $legacyData) {
+  global $dataRemaps;
+  if (in_array($legacyData, $dataRemaps[$state])) {
+    return $dataRemaps[$state][$legacyData];
+  }
+  return $legacyData;
+}
+
+//remaps:
+$allmaps = array();
+//Missing remaps:
+$missingRemaps = array();
+
+/**
+ * Remap pc blockstate to pe blockstate + data.
+ */
+function remap($state, $fullState) {
+  global $missingRemaps, $fullRemaps, $catchAllRemaps, $dataRemaps, $peFromState, $peFromId, $pcFromState;
+  $remap = $fullRemaps[$fullState];
+  if ($remap == null) {
+    $remap = $catchAllRemaps[$state];
+  }
+  if ($remap == null) {
+    if ($peFromState[$state] != null) {
+      $remap = array("name"=>$state);
+      if ($pcFromState[$fullState] != null && $peFromId[$pcFromState[$fullState]["id"]] == $remap["name"]) {
+        $remap["data"] = dataRemap($state, $pcFromState[$fullState]["data"]);
+      } else {
+        $missingRemaps[] = array("state"=>$fullState, "type"=>"Data", 
+                                 "extra"=>"Name Mismatch", 
+                                 "name1"=>$remap["name"], 
+                                 "name2"=>$peFromId[$pcFromState[$fullState]["id"]]);
+        return null;
+      }
+    } elseif ($pcFromState[$fullState] != null && $peFromId[$pcFromState[$fullState]["id"]] != null) {
+      $remap = array("name"=>$peFromId[$pcFromState[$fullState]["id"]]);
+      $remap["data"] = dataRemap($state, $pcFromState[$fullState]["data"]);
+    } else {
+      $missingRemaps[] = array("state"=>$fullState, "type"=>"Full", "extra"=>"", "name1"=>"", "name2"=>"");
+      return null;
+    }
+  }
+  return $remap;
 }
 
 //=====================================================\\
 //                      Pre-Remaps                     \\
 //=====================================================\\
-
-//Here you add the remaps that are performed before the
-// json-runtime ID remapping.
-//These remaps are essentially PC -> old PE ids
-// and can be added like they once were inside PSPE.
-
-//simpleRemap -> remaps only PC id to PE id and data stays untouched.
-//semiComplexRemap -> remaps PC id to PE id and data.
-//complexRemap -> remaps PC id and data to PE id and data.
-
-// ===[ BLOCKS ]===
-// Concrete Powder
-simpleRemap(252, 237);
-// Chain Command Block
-simpleRemap(211, 189);
-// Repeating Command Block
-simpleRemap(210, 188);
-// Grass Path
-simpleRemap(208, 198);
-// Double Wooden Slab
-simpleRemap(125, 157);
-simpleRemap(126, 158);
-simpleRemap(95, 241); // STAINED_GLASS
-simpleRemap(157, 126); // ACTIVATOR_RAIL
-simpleRemap(158, 125); // DROPPER
-simpleRemap(198, 208); // END_ROD
-simpleRemap(199, 240); // CHORUS_PLANT
-simpleRemap(207, 244); // BEETROOT_BLOCK
-simpleRemap(208, 198); // GRASS_PATH
-simpleRemap(212, 207); // FROSTED_ICE
-simpleRemap(218, 251); // OBSERVER
-simpleRemap(235, 220); // WHITE_GLAZED_TERRACOTTA
-simpleRemap(236, 221); // ORANGE_GLAZED_TERRACOTTA
-simpleRemap(237, 222); // MAGENTA_GLAZED_TERRACOTTA
-simpleRemap(238, 223); // LIGHT_BLUE_GLAZED_TERRACOTTA
-simpleRemap(239, 224); // YELLOW_GLAZED_TERRACOTTA
-simpleRemap(240, 225); // LIME_GLAZED_TERRACOTTA
-simpleRemap(241, 226); // PINK_GLAZED_TERRACOTTA
-simpleRemap(242, 227); // GRAY_GLAZED_TERRACOTTA
-simpleRemap(243, 228); // SILVER_GLAZED_TERRACOTTA
-simpleRemap(244, 229); // CYAN_GLAZED_TERRACOTTA
-simpleRemap(245, 219); // PURPLE_GLAZED_TERRACOTTA
-simpleRemap(246, 231); // BLUE_GLAZED_TERRACOTTA
-simpleRemap(247, 232); // BROWN_GLAZED_TERRACOTTA
-simpleRemap(248, 233); // GREEN_GLAZED_TERRACOTTA
-simpleRemap(249, 234); // RED_GLAZED_TERRACOTTA
-simpleRemap(250, 235); // BLACK_GLAZED_TERRACOTTA
-simpleRemap(251, 236); // CONCRETE
-simpleRemap(255, 252); // STRUCTURE_BLOCK
-simpleRemap(166, 95);  // BARRIER
-simpleRemap(154, 410);  // HOPPER
-simpleRemap(36, 250);  // Block Being Moved By Piston
-simpleRemap(205, 203);  // Purpur slab
-simpleRemap(204, 201);  // Purpur double slab TODO: replace to real double slab
-semiComplexRemap(202, 201, 2);  // Purpur pillar
-// Nether slab -> Quartz slab
-complexRemap(44, 7, 44, 6);
-complexRemap(44, 14, 44, 15);
-complexRemap(43, 7, 43, 6);
-// And vice-versa
-complexRemap(44, 6, 44, 7);
-complexRemap(44, 15, 44, 14);
-complexRemap(43, 6, 43, 7);
-// Prismarine data ID mismatch
-complexRemap(168, 1, 168, 2);
-complexRemap(168, 2, 168, 1);
-// Podzol
-complexRemap(3, 2, 243, 0);
-// Colored Fences
-semiComplexRemap(188, 85, 1);
-semiComplexRemap(189, 85, 2);
-semiComplexRemap(190, 85, 3);
-semiComplexRemap(192, 85, 4);
-semiComplexRemap(191, 85, 5);
-complexRemap(188, 0, 85, 1);
-complexRemap(189, 0, 85, 2);
-complexRemap(190, 0, 85, 3);
-complexRemap(192, 0, 85, 4);
-complexRemap(191, 0, 85, 5);
+//TODO REMAP REMAP REMAP all the data value stuff.
 // Shulker Boxes
-semiComplexRemap(219, 218, 0); // WHITE_SHULKER_BOX
-semiComplexRemap(220, 218, 1); // ORANGE_SHULKER_BOX
-semiComplexRemap(221, 218, 2); // MAGENTA_SHULKER_BOX
-semiComplexRemap(222, 218, 3); // LIGHT_BLUE_SHULKER_BOX
-semiComplexRemap(223, 218, 4); // YELLOW_SHULKER_BOX
-semiComplexRemap(224, 218, 5); // LIME_SHULKER_BOX
-semiComplexRemap(225, 218, 6); // PINK_SHULKER_BOX
-semiComplexRemap(226, 218, 7); // GRAY_SHULKER_BOX
-semiComplexRemap(227, 218, 8); // SILVER_SHULKER_BOX
-semiComplexRemap(228, 218, 9); // CYAN_SHULKER_BOX
-semiComplexRemap(229, 218, 10); // PURPLE_SHULKER_BOX
-semiComplexRemap(230, 218, 11); // BLUE_SHULKER_BOX
-semiComplexRemap(231, 218, 12); // BROWN_SHULKER_BOX
-semiComplexRemap(232, 218, 13); // GREEN_SHULKER_BOX
-semiComplexRemap(233, 218, 14); // RED_SHULKER_BOX
-semiComplexRemap(234, 218, 15); // BLACK_SHULKER_BOX
+defCatchAllRemap("minecraft:white_shulker_box", "minecraft:shulker_box", 0);
+defCatchAllRemap("minecraft:orange_shulker_box", "minecraft:shulker_box", 1);
+defCatchAllRemap("minecraft:magenta_shulker_box", "minecraft:shulker_box", 2);
+defCatchAllRemap("minecraft:light_blue_shulker_box", "minecraft:shulker_box", 3);
+defCatchAllRemap("minecraft:yellow_shulker_box", "minecraft:shulker_box", 4);
+defCatchAllRemap("minecraft:lime_shulker_box", "minecraft:shulker_box", 5); 
+defCatchAllRemap("minecraft:pink_shulker_box", "minecraft:shulker_box", 6); 
+defCatchAllRemap("minecraft:gray_shulker_box", "minecraft:shulker_box", 7); 
+defCatchAllRemap("minecraft:light_gray_shulker_box", "minecraft:shulker_box", 8);
+defCatchAllRemap("minecraft:cyan_shulker_box", "minecraft:shulker_box", 9); 
+defCatchAllRemap("minecraft:purple_shulker_box", "minecraft:shulker_box", 10);
+defCatchAllRemap("minecraft:blue_shulker_box", "minecraft:shulker_box", 11);
+defCatchAllRemap("minecraft:brown_shulker_box", "minecraft:shulker_box", 12);
+defCatchAllRemap("minecraft:green_shulker_box", "minecraft:shulker_box", 13);
+defCatchAllRemap("minecraft:red_shulker_box", "minecraft:shulker_box", 14);
+defCatchAllRemap("minecraft:black_shulker_box", "minecraft:shulker_box", 15);
 // Trap Doors...
 // Wooden
-complexRemap(96, 0, 96, 3);
-complexRemap(96, 1, 96, 2);
-complexRemap(96, 2, 96, 1);
-complexRemap(96, 3, 96, 0);
-complexRemap(96, 4, 96, 11);
-complexRemap(96, 5, 96, 10);
-complexRemap(96, 6, 96, 9);
-complexRemap(96, 7, 96, 8);
-complexRemap(96, 8, 96, 7);
-complexRemap(96, 9, 96, 6);
-complexRemap(96, 10, 96, 5);
-complexRemap(96, 11, 96, 4);
-complexRemap(96, 12, 96, 15);
-complexRemap(96, 13, 96, 14);
-complexRemap(96, 14, 96, 13);
-complexRemap(96, 15, 96, 12);
+defDataRemap("minecraft:oak_trapdoor", 0, 3);
+defDataRemap("minecraft:oak_trapdoor", 1, 2);
+defDataRemap("minecraft:oak_trapdoor", 2, 1);
+defDataRemap("minecraft:oak_trapdoor", 3, 0);
+defDataRemap("minecraft:oak_trapdoor", 4, 11);
+defDataRemap("minecraft:oak_trapdoor", 5, 10);
+defDataRemap("minecraft:oak_trapdoor", 6, 9);
+defDataRemap("minecraft:oak_trapdoor", 7, 8);
+defDataRemap("minecraft:oak_trapdoor", 8, 7);
+defDataRemap("minecraft:oak_trapdoor", 9, 6);
+defDataRemap("minecraft:oak_trapdoor", 10, 5);
+defDataRemap("minecraft:oak_trapdoor", 11, 4);
+defDataRemap("minecraft:oak_trapdoor", 12, 15);
+defDataRemap("minecraft:oak_trapdoor", 13, 14);
+defDataRemap("minecraft:oak_trapdoor", 14, 13);
+defDataRemap("minecraft:oak_trapdoor", 15, 12);
 // Iron
-complexRemap(167, 0, 167, 3);
-complexRemap(167, 1, 167, 2);
-complexRemap(167, 2, 167, 1);
-complexRemap(167, 3, 167, 0);
-complexRemap(167, 4, 167, 11);
-complexRemap(167, 5, 167, 10);
-complexRemap(167, 6, 167, 9);
-complexRemap(167, 7, 167, 8);
-complexRemap(167, 8, 167, 7);
-complexRemap(167, 9, 167, 6);
-complexRemap(167, 10, 167, 5);
-complexRemap(167, 11, 167, 4);
-complexRemap(167, 12, 167, 15);
-complexRemap(167, 13, 167, 14);
-complexRemap(167, 14, 167, 13);
-complexRemap(167, 15, 167, 12);
+defDataRemap("minecraft:iron_trapdoor", 0, 3);
+defDataRemap("minecraft:iron_trapdoor", 1, 2);
+defDataRemap("minecraft:iron_trapdoor", 2, 1);
+defDataRemap("minecraft:iron_trapdoor", 3, 0);
+defDataRemap("minecraft:iron_trapdoor", 4, 11);
+defDataRemap("minecraft:iron_trapdoor", 5, 10);
+defDataRemap("minecraft:iron_trapdoor", 6, 9);
+defDataRemap("minecraft:iron_trapdoor", 7, 8);
+defDataRemap("minecraft:iron_trapdoor", 8, 7);
+defDataRemap("minecraft:iron_trapdoor", 9, 6);
+defDataRemap("minecraft:iron_trapdoor", 10, 5);
+defDataRemap("minecraft:iron_trapdoor", 11, 4);
+defDataRemap("minecraft:iron_trapdoor", 12, 15);
+defDataRemap("minecraft:iron_trapdoor", 13, 14);
+defDataRemap("minecraft:iron_trapdoor", 14, 13);
+defDataRemap("minecraft:iron_trapdoor", 15, 12);
 // Jukebox
-complexRemap(84, 1, 84, 0);
-complexRemap(84, 0, 84, 0);
+defDataRemap("minecraft:jukebox", 1, 0);
+defDataRemap("minecraft:jukebox", 0, 0);
+
 
 //=====================================================\\
-//                   JSON remapping                    \\
+//                Helper / Debug Functions             \\
 //=====================================================\\
 
-function getState($id, $data) {
-  global $simpleIdRemaps, $complexIdRemaps;
-  $blockstate = (($id << 4) | $data);
-  if (array_key_exists($blockstate, $complexIdRemaps)) {
-    return $complexIdRemaps[$blockstate];
+//Render Table with current PC runtimeids.
+function renderPCTable() {
+  global $pcDef;
+  echo "<table border='1'>";
+  echo "<th>ID</th><th>Blockstate</th>";
+  foreach($pcDef as $key => $part) {
+    foreach ($part["states"] as $val) {
+      echo "<tr>";
+        echo "<td>";
+          echo $val["id"];
+        echo "</td>";
+        echo "<td>";
+          echo $key;
+          if ($val["properties"] != null) {
+            echo propertiesEncode($val["properties"]);
+          }
+        echo "</td>";
+      echo "</td>";
+    }
   }
-  if (array_key_exists($id, $simpleIdRemaps)) {
-	$simplePreRemaps = array();
-	foreach ($simpleIdRemaps[$id] as $simplePreRemap) {
-	  $simplePreRemaps[] = (($simplePreRemap << 4) | $data);
-	}
-    return $simplePreRemaps;
-  }
-  return array($blockstate);
+  echo "</table>";
 }
 
-$count = 0;
-$remaps = array();
-$PEblocks = json_decode(file_get_contents($fromFile), true);
-//Find all PC remaps for PE blocks.
-foreach($PEblocks as $PEblock) {
-  $preRemaps = getState($PEblock["id"], $PEblock["data"]);
-  foreach($preRemaps as $preRemap) {
-    $remap = array(
-      "from" => $preRemap,
-      "to" => $PEblock["runtimeID"]
-    );
-    $remaps[] = $remap;
-	$count++;
+//Render Table with current PE runtimeids.
+function renderPETable() {
+  global $peDef;
+  $i = 0;
+  echo "<table border='1'>";
+  echo "<th>ID</th><th>Blockstate</th>";
+  foreach($peDef as $val) {
+      echo "<tr>";
+        echo "<td>";
+          echo $i++;
+          //echo $val["id"];
+        echo "</td>";
+        echo "<td>";
+          echo $val["name"];
+          if ($val["data"] != null) {
+            echo "[data=". $val["data"] ."]";
+          }
+        echo "</td>";
+      echo "</tr>";
+  }
+  echo "</table>"; 
+}
+
+//Render Table with old pc ids.
+function renderPCOldTable() {
+  global $pcIdDef;
+  echo "<table border='1'>";
+  echo "<th>Blockstate</th><th>ID</th><th>Data</th>";
+  foreach($pcIdDef as $val) {
+    echo "<tr>";
+      echo "<td>";
+        echo $val["blockdata"];
+      echo "</td>";
+      echo "<td>";
+        echo $val["legacyid"];
+      echo "</td>";
+      echo "<td>";
+        echo $val["legacydata"];
+      echo "</td>";
+    echo "</tr>";
   }
 }
-$table = array("Remaps" => $remaps);
-file_put_contents($toFile, json_encode($table));
-echo "Created table for " . $count . " PC blockstate -> PE runtimeIDs";
+
+//Renders a table containing all full PC -> PE remaps.
+function renderRemapTable($allmaps) {
+  echo "<h1>Automatic remaps (" . count($allmaps) . ")</h1>";
+  echo "<table border='1' width='100%'>";
+  echo "<th>Blockstate</th><th>PE State</th><th>PE Data</th>";
+  foreach($allmaps as $mapping) {
+    echo "<tr>";
+      echo "<td>";
+       echo $mapping["blockdata"];
+      echo "</td>";
+      echo "<td>";
+        echo $mapping["pename"];
+      echo "</td>";
+      echo "<td>";
+        echo $mapping["pedata"];
+      echo "</td>";
+    echo "</tr>";
+  }
+  echo "</table>";
+}
+
+//Renders a table containing all missing / half-complete remaps.
+function renderMissingTable($missingRemaps) {
+  echo "<h1>Missing Remaps (" . count($missingRemaps) . ")</h1>";
+  echo "<table border='1' width='100%'>";
+  echo "<th>Blockstate</th><th>Type</th><th>Extra Info</th><th>NameFromPe</th><th>NameFromPcLegacy</th>";
+    foreach($missingRemaps as $missing) {
+      echo "<tr><td>";
+        echo $missing["state"];
+      echo "</td>";
+      echo "<td>";
+        echo $missing["type"];
+      echo "</td>";
+      echo "<td>";
+        echo $missing["extra"];
+      echo "</td>";
+      echo "<td>";
+        echo $missing["name1"];
+      echo "</td>";
+      echo "<td>";
+        echo $missing["name2"];
+      echo "</td></tr>";
+    }
+  echo "</table>";
+}
+
+
+//=====================================================\\
+//                      Remapping                      \\
+//=====================================================\\
+
+function remapAuto() {
+  global $pcDef, $allmaps;
+  foreach($pcDef as $key => $part) {
+    foreach ($part["states"] as $state) {
+      //Define fullkey.
+      $fullKey = $key;
+      if ($state["properties"] != null) {
+        $fullKey .= propertiesEncode($state["properties"]);
+      }
+      $map = remap($key, $fullKey);
+      if ($map != null) {
+        $allmaps[] = array("blockdata"=>$fullKey, "pename"=>$map["name"], "pedata"=>$map["data"]);
+      }
+    }
+  }
+}
+
+//=====================================================\\
+//                       Display                       \\
+//=====================================================\\
+
+//renderPCOldTable();
+remapAuto(); //After funtion $allmaps and $missingRemaps are filled.
+json_encode($allmaps);
+//renderRemapTable($allmaps);
+//renderMissingTable($missingRemaps);
+
 ?>
