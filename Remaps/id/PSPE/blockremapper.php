@@ -114,7 +114,8 @@ function defCatchAllRemap($state, $peState, $peData) {
  */
 function defDataRemap($state, $legacyData, $peData) {
   global $dataRemaps;
-  $remaps = $dataRemaps[$state];
+  $remaps = null;
+  if (array_key_exists($state, $dataRemaps)) { $remaps = $dataRemaps[$state]; }
   if ($remaps == null) {
     $remaps = array();
   }
@@ -124,7 +125,7 @@ function defDataRemap($state, $legacyData, $peData) {
 
 function dataRemap($state, $legacyData) {
   global $dataRemaps;
-  if (in_array($legacyData, $dataRemaps[$state])) {
+  if (array_key_exists($state, $dataRemaps) && array_key_exists($legacyData, $dataRemaps[$state])) {
     return $dataRemaps[$state][$legacyData];
   }
   return $legacyData;
@@ -140,23 +141,26 @@ $missingRemaps = array();
  */
 function remap($state, $fullState) {
   global $missingRemaps, $fullRemaps, $catchAllRemaps, $dataRemaps, $peFromState, $peFromId, $pcFromState;
-  $remap = $fullRemaps[$fullState];
+  $remap = null;
+  if (array_key_exists($fullState, $fullRemaps)) { $remap = $fullRemaps[$fullState]; }
   if ($remap == null) {
-    $remap = $catchAllRemaps[$state];
+    if (array_key_exists($state, $catchAllRemaps)) { $remap = $catchAllRemaps[$state]; }
   }
   if ($remap == null) {
-    if ($peFromState[$state] != null) {
+    if (array_key_exists($state, $peFromState)) {
       $remap = array("name"=>$state);
-      if ($pcFromState[$fullState] != null && $peFromId[$pcFromState[$fullState]["id"]] == $remap["name"]) {
+      if (array_key_exists($fullState, $pcFromState) && array_key_exists($pcFromState[$fullState]["id"], $peFromId) 
+          && $peFromId[$pcFromState[$fullState]["id"]] == $remap["name"]) {
         $remap["data"] = dataRemap($state, $pcFromState[$fullState]["data"]);
       } else {
         $missingRemaps[] = array("state"=>$fullState, "type"=>"Data", 
                                  "extra"=>"Name Mismatch", 
-                                 "name1"=>$remap["name"], 
-                                 "name2"=>$peFromId[$pcFromState[$fullState]["id"]]);
+                                 "name1"=>$remap["name"],
+                                 "name2"=>(array_key_exists($fullState, $pcFromState) && array_key_exists($pcFromState[$fullState]["id"], $peFromId) ? 
+                                           $peFromId[$pcFromState[$fullState]["id"]] : ""));
         return null;
       }
-    } elseif ($pcFromState[$fullState] != null && $peFromId[$pcFromState[$fullState]["id"]] != null) {
+    } elseif (array_key_exists($fullState, $pcFromState) && array_key_exists($pcFromState[$fullState]["id"], $peFromId)) {
       $remap = array("name"=>$peFromId[$pcFromState[$fullState]["id"]]);
       $remap["data"] = dataRemap($state, $pcFromState[$fullState]["data"]);
     } else {
@@ -355,7 +359,7 @@ function remapAuto() {
     foreach ($part["states"] as $state) {
       //Define fullkey.
       $fullKey = $key;
-      if ($state["properties"] != null) {
+      if (array_key_exists("properties", $state)) {
         $fullKey .= propertiesEncode($state["properties"]);
       }
       $map = remap($key, $fullKey);
@@ -372,7 +376,8 @@ function remapAuto() {
 
 //renderPCOldTable();
 remapAuto(); //After funtion $allmaps and $missingRemaps are filled.
-json_encode($allmaps);
+echo json_encode($allmaps);
+//var_dump($allmaps);
 //renderRemapTable($allmaps);
 //renderMissingTable($missingRemaps);
 
