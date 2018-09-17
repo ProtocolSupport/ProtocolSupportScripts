@@ -175,6 +175,10 @@ function remap($state, $fullState) {
 //                      Pre-Remaps                     \\
 //=====================================================\\
 //TODO REMAP REMAP REMAP all the data value stuff.
+// Full proper remaps
+defFullRemap("minecraft:jukebox[has_record=false]", "minecraft:jukebox", 0); //Jukebox
+defFullRemap("minecraft:podzol[snowy=false]", "minecraft:podzol", 0); //podzol
+
 // Shulker Boxes
 defCatchAllRemap("minecraft:white_shulker_box", "minecraft:shulker_box", 0);
 defCatchAllRemap("minecraft:orange_shulker_box", "minecraft:shulker_box", 1);
@@ -227,9 +231,6 @@ defDataRemap("minecraft:iron_trapdoor", 12, 15);
 defDataRemap("minecraft:iron_trapdoor", 13, 14);
 defDataRemap("minecraft:iron_trapdoor", 14, 13);
 defDataRemap("minecraft:iron_trapdoor", 15, 12);
-// Jukebox
-defDataRemap("minecraft:jukebox", 1, 0);
-defDataRemap("minecraft:jukebox", 0, 0);
 
 
 //=====================================================\\
@@ -376,9 +377,9 @@ function remapAuto() {
 
 //renderPCOldTable();
 remapAuto(); //After funtion $allmaps and $missingRemaps are filled.
-echo json_encode($allmaps);
+//echo json_encode($allmaps);
 //var_dump($allmaps);
-//renderRemapTable($allmaps);
-//renderMissingTable($missingRemaps);
+renderRemapTable($allmaps);
+renderMissingTable($missingRemaps);
 
 ?>
