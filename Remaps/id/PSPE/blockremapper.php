@@ -178,24 +178,40 @@ function remap($state, $fullState) {
 // Full proper remaps
 defFullRemap("minecraft:jukebox[has_record=false]", "minecraft:jukebox", 0); //Jukebox
 defFullRemap("minecraft:podzol[snowy=false]", "minecraft:podzol", 0); //podzol
-
+// Stained glass
+defFullRemap("minecraft:white_stained_glass", "minecraft:stained_glass", 0);
+defFullRemap("minecraft:orange_stained_glass", "minecraft:stained_glass", 1);
+defFullRemap("minecraft:magenta_stained_glass", "minecraft:stained_glass", 2);
+defFullRemap("minecraft:light_blue_stained_glass", "minecraft:stained_glass", 3);
+defFullRemap("minecraft:yellow_stained_glass", "minecraft:stained_glass", 4);
+defFullRemap("minecraft:lime_stained_glass", "minecraft:stained_glass", 5); 
+defFullRemap("minecraft:pink_stained_glass", "minecraft:stained_glass", 6); 
+defFullRemap("minecraft:gray_stained_glass", "minecraft:stained_glass", 7); 
+defFullRemap("minecraft:light_gray_stained_glass", "minecraft:stained_glass", 8);
+defFullRemap("minecraft:cyan_stained_glass", "minecraft:stained_glass", 9); 
+defFullRemap("minecraft:purple_stained_glass", "minecraft:stained_glass", 10);
+defFullRemap("minecraft:blue_stained_glass", "minecraft:stained_glass", 11);
+defFullRemap("minecraft:brown_stained_glass", "minecraft:stained_glass", 12);
+defFullRemap("minecraft:green_stained_glass", "minecraft:stained_glass", 13);
+defFullRemap("minecraft:red_stained_glass", "minecraft:stained_glass", 14);
+defFullRemap("minecraft:black_stained_glass", "minecraft:stained_glass", 15);
 // Shulker Boxes
-defCatchAllRemap("minecraft:white_shulker_box", "minecraft:shulker_box", 0);
-defCatchAllRemap("minecraft:orange_shulker_box", "minecraft:shulker_box", 1);
-defCatchAllRemap("minecraft:magenta_shulker_box", "minecraft:shulker_box", 2);
-defCatchAllRemap("minecraft:light_blue_shulker_box", "minecraft:shulker_box", 3);
-defCatchAllRemap("minecraft:yellow_shulker_box", "minecraft:shulker_box", 4);
-defCatchAllRemap("minecraft:lime_shulker_box", "minecraft:shulker_box", 5); 
-defCatchAllRemap("minecraft:pink_shulker_box", "minecraft:shulker_box", 6); 
-defCatchAllRemap("minecraft:gray_shulker_box", "minecraft:shulker_box", 7); 
-defCatchAllRemap("minecraft:light_gray_shulker_box", "minecraft:shulker_box", 8);
-defCatchAllRemap("minecraft:cyan_shulker_box", "minecraft:shulker_box", 9); 
-defCatchAllRemap("minecraft:purple_shulker_box", "minecraft:shulker_box", 10);
-defCatchAllRemap("minecraft:blue_shulker_box", "minecraft:shulker_box", 11);
-defCatchAllRemap("minecraft:brown_shulker_box", "minecraft:shulker_box", 12);
-defCatchAllRemap("minecraft:green_shulker_box", "minecraft:shulker_box", 13);
-defCatchAllRemap("minecraft:red_shulker_box", "minecraft:shulker_box", 14);
-defCatchAllRemap("minecraft:black_shulker_box", "minecraft:shulker_box", 15);
+defFullRemap("minecraft:white_shulker_box[facing=up]", "minecraft:shulker_box", 0);
+defFullRemap("minecraft:orange_shulker_box[facing=up]", "minecraft:shulker_box", 1);
+defFullRemap("minecraft:magenta_shulker_box[facing=up]", "minecraft:shulker_box", 2);
+defFullRemap("minecraft:light_blue_shulker_box[facing=up]", "minecraft:shulker_box", 3);
+defFullRemap("minecraft:yellow_shulker_box[facing=up]", "minecraft:shulker_box", 4);
+defFullRemap("minecraft:lime_shulker_box[facing=up]", "minecraft:shulker_box", 5); 
+defFullRemap("minecraft:pink_shulker_box[facing=up]", "minecraft:shulker_box", 6); 
+defFullRemap("minecraft:gray_shulker_box[facing=up]", "minecraft:shulker_box", 7); 
+defFullRemap("minecraft:light_gray_shulker_box[facing=up]", "minecraft:shulker_box", 8);
+defFullRemap("minecraft:cyan_shulker_box[facing=up]", "minecraft:shulker_box", 9); 
+defFullRemap("minecraft:purple_shulker_box[facing=up]", "minecraft:shulker_box", 10);
+defFullRemap("minecraft:blue_shulker_box[facing=up]", "minecraft:shulker_box", 11);
+defFullRemap("minecraft:brown_shulker_box[facing=up]", "minecraft:shulker_box", 12);
+defFullRemap("minecraft:green_shulker_box[facing=up]", "minecraft:shulker_box", 13);
+defFullRemap("minecraft:red_shulker_box[facing=up]", "minecraft:shulker_box", 14);
+defFullRemap("minecraft:black_shulker_box[facing=up]", "minecraft:shulker_box", 15);
 // Trap Doors...
 // Wooden
 defDataRemap("minecraft:oak_trapdoor", 0, 3);
@@ -375,6 +391,7 @@ function remapAuto() {
 //                       Display                       \\
 //=====================================================\\
 
+//renderPCTable();
 //renderPCOldTable();
 remapAuto(); //After funtion $allmaps and $missingRemaps are filled.
 //echo json_encode($allmaps);
